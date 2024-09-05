@@ -10,7 +10,7 @@ import cv2 as cv
 
 
 def main():
-   splat_filepath = r'exports/splat/splat.ply'                                                        # Specify ply file of splat
+   splat_filepath = r'../exports/splat/splat.ply'                                                        # Specify ply file of splat
    camera_transform = np.eye(4)                                                                       # Initial camera transform
    camera_intrinsic = np.array([[480.613, 0, 324.1875], [0, 481.5445, 210.0625], [0, 0, 1]])          # Arbitrary camera intrinsics matrix
    height, width = 1080, 1920                                                                         # Image height and width
@@ -27,6 +27,9 @@ def main():
    scales = torch.from_numpy(data['scales']).float().to(device)
    opacities = torch.from_numpy(data['opacity']).float().to(device)
    colors = torch.from_numpy(data['color']).float().to(device)
+
+   print(np.max(data['color']))
+   print(np.min(data['color']))
    
    # Camera intrinsics
    Ks = torch.from_numpy(camera_intrinsic)[None, :, :].float().to(device)
@@ -128,6 +131,10 @@ def main():
          pitch+=t
       elif key == ord('g'):
          pitch-=t
+      elif key == ord('z'):
+         roll-=t
+      elif key == ord('x'):
+         roll+=t
       else:
          continue
 
@@ -169,6 +176,7 @@ def process_ply(ply_file_path):
                # 1 / (1 + np.exp(-v["opacity"])),
          ]
       )
+      color = np.clip(color, 0, 1)
       # color = np.array([v['red'], v['green'], v['blue']])
       opacity = np.array(
          v["opacity"])
