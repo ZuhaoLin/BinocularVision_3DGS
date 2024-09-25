@@ -6,12 +6,16 @@ from gsplat._helper import load_test_data
 from gsplat.rendering import rasterization
 
 from plyfile import PlyData
+import sklearn.preprocessing
 import cv2 as cv
 
+import os
 
 def main():
-   splat_filepath = r'../exports/splat/splat.ply'                                                        # Specify ply file of splat
-   camera_transform = np.eye(4)                                                                       # Initial camera transform
+   print(os.getcwd())
+   splat_filepath = r'./exports/splat/splat.ply'                                                      # Specify ply file of splat
+   c2w = np.eye(4)                                                                                    # Initial camera transform
+   w2c = np.eye(4)
    camera_intrinsic = np.array([[480.613, 0, 324.1875], [0, 481.5445, 210.0625], [0, 0, 1]])          # Arbitrary camera intrinsics matrix
    height, width = 1080, 1920                                                                         # Image height and width
 
@@ -27,22 +31,18 @@ def main():
    scales = torch.from_numpy(data['scales']).float().to(device)
    opacities = torch.from_numpy(data['opacity']).float().to(device)
    colors = torch.from_numpy(data['color']).float().to(device)
-
-   print(np.max(data['color']))
-   print(np.min(data['color']))
    
    # Camera intrinsics
    Ks = torch.from_numpy(camera_intrinsic)[None, :, :].float().to(device)
 
    # Initialize the camera properties
    x, y, z = 0, 0, 0
-   yaw, pitch, roll = 0, 0, 0
 
    # Example data
    # (
    #    means,
    #    quats,
-   #    scales,
+   #    scales, 
    #    opacities,
    #    colors,
    #    viewmats1,
@@ -53,13 +53,19 @@ def main():
 
    while True:
       # Camera loop
-      Ryaw = get_yaw(yaw)
-      Rpitch = get_pitch(pitch)
-      Rroll = get_roll(roll)
-      
-      camera_transform[:-1, :-1] = Ryaw @ Rpitch @ Rroll
-      camera_transform[:-1, -1] = [x, y, z]
-      viewmats = torch.from_numpy(camera_transform)[None, :, :].float().to(device)  
+      c2w[:-1, -1] = [x, y, z]
+
+      # look_direction = c2w[2, :-1]/np.linalg.norm(c2w[2, :-1])
+
+      # print(f'c2w:\n {c2w}')
+
+      # w2c[:-1, :-1] = np.linalg.inv(c2w[:-1, :-1])
+      w2c = np.linalg.inv(c2w)
+      look_direction = w2c[2, :-1]/np.linalg.norm(w2c[2, :-1])
+      # w2c[:-1, -1] = [x, y, z]
+      viewmats = torch.from_numpy(w2c)[None, :, :].float().to(device)
+
+      print(f'w2c:\n {w2c}')
 
       C = len(viewmats)
       N = len(means)
@@ -87,8 +93,6 @@ def main():
       render_depths = render_colors[..., 3:4]
       render_depths = render_depths / render_depths.max()
 
-      print(render_rgbs.shape)
-
       # Show Images
       # canvas = (
       #    torch.cat(
@@ -112,9 +116,13 @@ def main():
       if key == ord('p'):
          break
       elif key == ord('w'):
-         x+=t
+         x+=t*look_direction[0]
+         y+=t*look_direction[1]
+         z+=t*look_direction[2]
       elif key == ord('s'):
-         x-=t
+         x-=t*look_direction[0]
+         y-=t*look_direction[1]
+         z-=t*look_direction[2]
       elif key == ord('d'):
          y+=t
       elif key == ord('a'):
@@ -124,17 +132,17 @@ def main():
       elif key == ord('f'):
          z-=t
       elif key == ord('q'):
-         yaw+=t
+         c2w[:-1, :-1] =  get_yaw(t, as_type=np.array) @ c2w[:-1, :-1]
       elif key == ord('e'):
-         yaw-=t
+         c2w[:-1, :-1] =  get_yaw(-t, as_type=np.array) @ c2w[:-1, :-1]
       elif key == ord('t'):
-         pitch+=t
+         c2w[:-1, :-1] =  get_pitch(t, as_type=np.array) @ c2w[:-1, :-1]
       elif key == ord('g'):
-         pitch-=t
+         c2w[:-1, :-1] =  get_pitch(-t, as_type=np.array) @ c2w[:-1, :-1]
       elif key == ord('z'):
-         roll-=t
+         c2w[:-1, :-1] =  get_roll(t, as_type=np.array) @ c2w[:-1, :-1]
       elif key == ord('x'):
-         roll+=t
+         c2w[:-1, :-1] =  get_roll(-t, as_type=np.array) @ c2w[:-1, :-1]
       else:
          continue
 
@@ -190,31 +198,38 @@ def process_ply(ply_file_path):
 
    return values
 
-def get_yaw(theta):
-   R = torch.Tensor([
+def get_yaw(theta, as_type=list):
+
+   R = [
       [np.cos(theta), -np.sin(theta), 0],
       [np.sin(theta), np.cos(theta), 0],
       [0, 0, 1]
-   ])
+      ]
 
+   if as_type != list:
+      R = as_type(R)
    return R
 
-def get_pitch(theta):
-   R = torch.Tensor([
+def get_pitch(theta, as_type=list):
+   R = [
       [np.cos(theta), 0, np.sin(theta)],
       [0, 1, 0],
       [-np.sin(theta), 0, np.cos(theta)]
-   ])
+      ]
    
+   if as_type != list:
+      R = as_type(R)
    return R
 
-def get_roll(theta):
-   R = torch.Tensor([
+def get_roll(theta, as_type=list):
+   R = [
       [1, 0, 0],
       [0, np.cos(theta), -np.sin(theta)],
       [0, np.sin(theta), np.cos(theta)]
-   ])
+      ]
 
+   if as_type != list:
+      R = as_type(R)
    return R
 
 if __name__ == "__main__":
