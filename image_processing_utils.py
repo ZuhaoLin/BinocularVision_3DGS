@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import cv2 as cv
+from typing import Union
 
 def combine_images(image1, image2):
     assert image1.shape == image2.shape, \
@@ -8,12 +9,29 @@ def combine_images(image1, image2):
         'image1 is of shape {image1.shape} and' + \
         'image2 is of shape {image2.shape}'
 
-    combined_img = (image1.astype(np.float32) + image2.astype(np.float32)) / 2
+    combined_img = (image1.type(torch.FloatTensor) + image2.type(torch.FloatTensor)) / 2
 
-    return combined_img.astype(np.uint8)
+    return combined_img.type(torch.IntTensor)
 
-def blur_detection(image):
-    return cv.Laplacian(image, cv.CV_64F).var()
+def blur_detection(
+        image: Union[np.ndarray, torch.Tensor],
+        image_type='rgb'
+        ):
+    if isinstance(image, torch.Tensor):
+        image = image.numpy().astype(np.uint8)
+
+    if image_type == 'rgb' and image.ndim == 3:
+        return cv.Laplacian(image, cv.CV_64F).var()
+    elif image_type == 'rgb' and image.ndim == 4:
+        blurs = np.zeros(image.shape[0])
+        for i in range(image.shape[0]):
+            blurs[i] = cv.Laplacian(
+                image[i, ...],
+                cv.CV_64F
+            ).var()
+        return blurs
+    else:
+        raise ValueError(f'Does not support image type {image_type} with dimension {image.ndim}')
 
 def image_distance_error(image1, image2):
     '''
@@ -53,6 +71,8 @@ def get_center_patch(images, win_height, win_width, image_type='rgb'):
         ]
     
 def draw_center_patch(images, win_height, win_width, color=(255, 0, 0), thickness=1, image_type='rgb'):
+    if isinstance(images, torch.Tensor):
+        images = images.numpy().astype(np.uint8)
     half_len = np.array([int(win_height/2), int(win_width/2)])
 
     if images.ndim == 4 and image_type == 'rgb':

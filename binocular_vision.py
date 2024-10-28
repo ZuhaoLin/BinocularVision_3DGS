@@ -29,11 +29,61 @@ class binocular_eyes:
             default = torch.FloatTensor([1])
             default = 1.0
             default_c2w = torch.eye(4)
-            self.left_eye = eyeball(default_c2w, default, default, default, default, 600, 300)
-            self.right_eye = eyeball(default_c2w, default, default, default, default, 600, 300)
+            self.width = 600
+            self.height = 300
+            self.left_eye = eyeball(
+                default_c2w,
+                default,
+                default,
+                default,
+                default,
+                self.width,
+                self.height
+            )
+            self.right_eye = eyeball(
+                default_c2w,
+                default,
+                default,
+                default,
+                default,
+                self.width,
+                self.height
+            )
         elif isinstance(cams, cameras.Cameras):
+            self.width = cams.width
+            self.height = cams.height
+            self.left_eye = eyeball(
+                cams.camera_to_worlds,
+                cams.fx,
+                cams.fy,
+                cams.cx,
+                cams.cy,
+                cams.width,
+                cams.height,
+                cams.distortion_params,
+                cams.camera_type,
+                cams.times,
+                cams.metadata
+            )
+            self.right_eye = eyeball(
+                cams.camera_to_worlds,
+                cams.fx,
+                cams.fy,
+                cams.cx,
+                cams.cy,
+                cams.width,
+                cams.height,
+                cams.distortion_params,
+                cams.camera_type,
+                cams.times,
+                cams.metadata
+            )
+        elif isinstance(cams, eyeball):
+            self.width = cams.width
+            self.height = cams.height
             self.left_eye, self.right_eye = copy.deepcopy(cams), copy.deepcopy(cams)
         elif len(cams) == 2:
+            # Note: Work on this later, make sure it is an eyeball and not cam obj
             self.left_eye = cams[0]
             self.right_eye = cams[1]
 
@@ -43,32 +93,13 @@ class binocular_eyes:
 
     def _init_eye_positions(self):
         c2w_left, c2w_right = torch.eye(4), torch.eye(4)                                            # Default identity
-        o2w = self._quick_viewmat_inv(self.w2o)
+        o2w = utils.quick_viewmat_inv(self.w2o)
         c2w_left, c2w_right = copy.deepcopy(o2w), copy.deepcopy(o2w)                                # Assume eyes start with same orientation as object
         c2w_left[0, -1] -= self.pd/2                                                                # Get the positions of the cameras
         c2w_right[0, -1] += self.pd/2
 
         self.left_eye.camera_to_worlds = c2w_left
         self.right_eye.camera_to_worlds = c2w_right
-    
-    def _quick_viewmat_inv(self, viewmat: torch.Tensor):
-        '''
-        Does a quick and computationally less expensive inverse of viewmats
-        '''
-        viewmat_inv = torch.eye(4)
-        R = viewmat[:3, :3]                                                                         # Rotation component
-        T = viewmat[:3, 3][:, None]
-
-        # if gsplat_convention:
-        #     R_convert = torch.diag(torch.tensor([1, -1, -1])).type(torch.float)
-        #     R = R @ R_convert
-
-        R_inv = R.T                                                                                 # inv of rotation == transpose of rotation
-        T_inv = -R_inv @ T                                                                          # inv of translation
-
-        viewmat_inv[:3, :3] = R_inv
-        viewmat_inv[:3, 3:4] = T_inv
-        return viewmat_inv
 
     def face_lookat(self, lookat_point: torch.Tensor):
         '''
@@ -78,12 +109,16 @@ class binocular_eyes:
 
         position = self.get_position()
         lookat = lookat_point - position
-        o2w = camera_utils.viewmatrix(
+        o2w = torch.eye(4)
+        o2w[:-1, :] = camera_utils.viewmatrix(
             lookat.flatten(),
             UP.flatten(),
             position.flatten()
         )
-        self.w2o = self._quick_viewmat_inv(o2w)
+
+        self.w2o = utils.quick_viewmat_inv(o2w)
+        self._set_eye_positions()
+
     
     def eye_lookat(self, lookat_point: torch.Tensor):
         '''
@@ -112,11 +147,23 @@ class binocular_eyes:
         self.left_eye.camera_to_worlds = left_viewmatrix                                            # C2W matrices
         self.right_eye.camera_to_worlds = right_viewmatrix
 
-    def rotate_y(self, x):
+    def yaw(self, x):
         '''
         Rotate around the y axis (up), changing yaw
         '''
-        self.w2o = utils.get_Ry(x, shape=4, as_type=torch.FloatTensor) @ self.w2o
+        Ry = utils.get_Ry(x, shape=4, as_type=torch.FloatTensor)
+        self.w2o = Ry @ self.w2o
+        self.left_eye.yaw(x)
+        self.right_eye.yaw(x)
+
+        self._set_eye_positions()
+
+    def pitch(self, x):
+        Rx = utils.get_Rx(x, shape=4, as_type=torch.FloatTensor)
+        self.w2o = Rx @ self.w2o
+        self.left_eye.yaw(x)
+        self.right_eye.yaw(x)
+
         self._set_eye_positions()
 
     def move_forward(self, x):
@@ -150,7 +197,7 @@ class binocular_eyes:
         return self.right_eye.camera_to_worlds[:-1, -1][:, None]
 
     def get_position(self):
-        return self._quick_viewmat_inv(self.w2o)[:-1, -1][:, None]
+        return utils.quick_viewmat_inv(self.w2o)[:-1, -1][:, None]
     
     def get_rotation_matrix(self):
         return self.w2o[:-1, :-1]
@@ -159,60 +206,40 @@ class binocular_eyes:
         return (self.get_left_eye_w2c(), self.get_right_eye_w2c())
 
     def get_left_eye_w2c(self):
-        return self._quick_viewmat_inv(self.left_eye.camera_to_worlds)
+        return utils.quick_viewmat_inv(self.left_eye.camera_to_worlds)
     
     def get_right_eye_w2c(self):
-        return self._quick_viewmat_inv(self.right_eye.camera_to_worlds)
+        return utils.quick_viewmat_inv(self.right_eye.camera_to_worlds)
     
     def get_eyes_c2w(self):
         return (self.left_eye.camera_to_worlds, self.right_eye.camera_to_worlds)
     
+    def get_intrinsics(self):
+        Ks1 = self.left_eye.get_intrinsics_matrices().reshape((1, 3, 3)).float()
+        Ks2 = self.right_eye.get_intrinsics_matrices().reshape((1, 3, 3)).float()
+        Ks = torch.cat((Ks1, Ks2), 0).float()
+        return Ks
+    
     def _set_eye_positions(self):
-        o2w = self._quick_viewmat_inv(self.w2o)
-        position = o2w[:-1, -1]
-
-        # right_trans = torch.eye(4)
-        # right_trans[:-1, -1] = [self.pd/2, 0, 0]
-        # left_trans = torch.eye(4)
-        # left_trans[:-1, -1] = [-self.pd/2, 0, 0]
-
         temp_left = copy.deepcopy(self.w2o)
         temp_right = copy.deepcopy(self.w2o)
         temp_left[0, -1] += self.pd/2
         temp_right[0, -1] -= self.pd/2
 
-        left_position = self._quick_viewmat_inv(temp_left)[:-1, -1]
-        right_position = self._quick_viewmat_inv(temp_right)[:-1, -1]
+        left_position = utils.quick_viewmat_inv(temp_left)[:-1, -1]
+        right_position = utils.quick_viewmat_inv(temp_right)[:-1, -1]
 
-        # temp_right = right_trans @ self.w2o
-        # temp_left = left_trans @ self.w2o
-
-        left_c2w = self.left_eye.camera_to_worlds                          # Get the world to camera matrices
-        right_c2w = self.right_eye.camera_to_worlds
-
-
-
-        # right_w = torch.Tensor([self.pd/2, 0, 0, 1]).reshape(4, 1)
-        # right_position = self.w2o @ right_w
-        # left_position = self.w2o @ -right_w
-
-        left_c2w[:-1, -1] = left_position.flatten()
-        right_c2w[:-1, -1] = right_position.flatten()
-
-        # left_c2w[:-1, -1] = position - translate                            # Move the 'eyes' to the correct position
-        # right_c2w[:-1, -1] = position + translate
-
-        self.left_eye.camera_to_worlds = left_c2w                         # Convert back to cam to world matrices
-        self.right_eye.camera_to_worlds = right_c2w
+        self.left_eye.camera_to_worlds[:-1, -1] = left_position.flatten()                     # Convert back to cam to world matrices
+        self.right_eye.camera_to_worlds[:-1, -1] = right_position.flatten()
 
     def set_position(self, position: torch.Tensor):
         '''
         Set the position for the 'face' in global coordinates
         '''
         position = position.reshape(3, 1)
-        o2w = self._quick_viewmat_inv(self.w2o)
+        o2w = utils.quick_viewmat_inv(self.w2o)
         o2w[:-1, -1] = position.flatten()                                                      # Position of 'face'
-        self.w2o = self._quick_viewmat_inv(o2w)
+        self.w2o = utils.quick_viewmat_inv(o2w)
         self._set_eye_positions()
 
 class eyeball(cameras.Cameras):
@@ -250,3 +277,33 @@ class eyeball(cameras.Cameras):
             times,
             metadata
         )
+
+    def yaw(self, x):
+        Ry = utils.get_Ry(x, shape=4, as_type=torch.FloatTensor)
+        w2c = self.get_w2c()
+        self.camera_to_worlds = utils.quick_viewmat_inv(Ry @ w2c)
+
+    def generate_yaw_peeks(self, x, mat_type='c2w'):
+        Ry = utils.get_Ry(x, shape=4, as_type=torch.FloatTensor)
+        w2c = self.get_w2c()
+        w2c = Ry @ w2c
+        if str.lower(mat_type)=='c2w':
+            c2w = utils.quick_multiviewmat_inv(w2c)
+            return c2w
+        elif str.lower(mat_type)=='w2c':
+            return w2c
+        else:
+            raise ValueError('mat_type must be c2w or 2wc')
+
+    def pitch(self, x):
+        Rx = utils.get_Rx(x, shape=4, as_type=torch.FloatTensor)
+        w2c = self.get_w2c()
+        self.camera_to_worlds = utils.quick_viewmat_inv(Rx @ w2c)
+
+    def roll(self, x):
+        Rz = utils.get_Rz(x, shape=4, as_type=torch.FloatTensor)
+        w2c = self.get_w2c()
+        self.camera_to_worlds = utils.quick_viewmat_inv(Rz @ w2c)
+
+    def get_w2c(self):
+        return utils.quick_viewmat_inv(self.camera_to_worlds)
