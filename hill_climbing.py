@@ -15,12 +15,12 @@ def hill_climbing(
    save_values=False,
    verbose=True,
    generate_neighbors_params: dict = {},
-   get_blur_params: dict = {}
+   evaluate_neighbors_params: dict = {}
 ):
     blurs = []
     xs = []
 
-    blur_val0 = evaluate_neighbors(x0, world, eyes, **get_blur_params)[0]
+    blur_val0 = evaluate_neighbors(x0, world, eyes, **evaluate_neighbors_params)[0]
     for i in range(max_iter):
         if save_values:
             blurs.append(blur_val0)
@@ -36,7 +36,7 @@ def hill_climbing(
             neighbors,
             world,
             eyes,
-            **get_blur_params
+            **evaluate_neighbors_params
         )
         best_neighbor = np.argmax(blur_vals)
         
@@ -48,7 +48,7 @@ def hill_climbing(
 
         if (
             blur_vals[best_neighbor] <= blur_val0 \
-            and blur_vals[best_neighbor] > threshold
+            and blur_val0 > threshold
             ):
             break
         elif blur_vals[best_neighbor] >= blur_val0:

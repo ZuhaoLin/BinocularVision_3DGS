@@ -39,7 +39,7 @@ def main():
     data = utils.process_ply(splat_filepath)                                                           # Read ply file
 
     # Detection window size
-    wh, wl = 100, 100
+    wh, wl = 50, 50
     world = simworld.simworld(data)
 
     # Test eye location
@@ -55,14 +55,20 @@ def main():
         'max_x': 0.05
     }
 
+    eval_neigh_params = {
+        'wh': wh,
+        'ww': wl
+    }
+
     x_result, info = hill_climbing.hill_climbing(
         0,
         world,
         beyes,
         n_neighbors=40,
-        threshold=120,
+        threshold=90,
         save_values=True,
-        generate_neighbors_params=gen_neigh_params
+        generate_neighbors_params=gen_neigh_params,
+        evaluate_neighbors_params=eval_neigh_params
     )
 
     beyes.left_eye.yaw(x_result)
@@ -85,6 +91,7 @@ def main():
 
     left_img = img_utils.draw_center_patch(left_img, wh, wl)
     right_img = img_utils.draw_center_patch(right_img, wh, wl)
+    combined_img = img_utils.draw_center_patch(combined_img, wh, wl)
 
     plt.figure()
     ax1 = plt.plot(np.arange(info['iters']+1), info['blur_vals'], 'b.')
@@ -100,7 +107,7 @@ def main():
 
     cv.imshow('Left eye', left_img)
     cv.imshow('Right eye', right_img)
-    cv.imshow('Combined', combined_img.numpy().astype(np.uint8))
+    cv.imshow('Combined', combined_img)
 
     key = cv.waitKey(0)
 
