@@ -10,6 +10,7 @@ def hill_climbing(
    world: simworld.simworld,
    eyes: binocular_vision.binocular_eyes,
    n_neighbors: int = 10,
+   threshold: float = 0.0,
    max_iter: int = 1000,
    save_values=False,
    verbose=True,
@@ -45,9 +46,12 @@ def hill_climbing(
             print(f'iter blur: {blur_vals[best_neighbor]} \nbest blur: {blur_val0}')
             print('================================================================')
 
-        if blur_vals[best_neighbor] <= blur_val0:
+        if (
+            blur_vals[best_neighbor] <= blur_val0 \
+            and blur_vals[best_neighbor] > threshold
+            ):
             break
-        else:
+        elif blur_vals[best_neighbor] >= blur_val0:
             x0 = neighbors[best_neighbor]
             blur_val0 = blur_vals[best_neighbor]
 
@@ -81,32 +85,49 @@ def evaluate_neighbors(
 ):
     left_viewmats = eyes.left_eye.generate_yaw_peeks(x, mat_type='w2c')
     if np.isscalar(x):
-        viewmats = torch.eye(4).repeat(2, 1, 1)
+        repeat_val = 1
     else:
-        viewmats = torch.eye(4).repeat(x.size*2, 1, 1)
-    viewmats[::2, :, :] = left_viewmats
-    viewmats[1::2, :, :] = eyes.right_eye.get_w2c()
+        repeat_val = x.size
 
-    if np.isscalar(x):
-        imgs = world.render(
-            viewmats,
-            eyes.get_intrinsics(),
-            eyes.width,
-            eyes.height
+    viewmats = torch.eye(4).repeat(repeat_val+1, 1, 1)
+    viewmats[:-1, ...] = left_viewmats
+    viewmats[-1, ...] = eyes.right_eye.get_w2c()
+    # viewmats[::2, :, :] = left_viewmats
+    # viewmats[1::2, :, :] = eyes.right_eye.get_w2c()
+
+    # if np.isscalar(x):
+    #     imgs = world.render(
+    #         viewmats,
+    #         eyes.get_intrinsics(),
+    #         eyes.width,
+    #         eyes.height
+    #     )
+    # else:
+    intrinsics = eyes.left_eye \
+        .get_intrinsics_matrices() \
+        .reshape(1, 3, 3) \
+        .repeat(repeat_val, 1, 1)
+    
+    intrinsics = torch.cat(
+        (intrinsics,
+         eyes.right_eye \
+            .get_intrinsics_matrices() \
+            .reshape(1, 3, 3)
+        ),
+        0
         )
-    else:
-        imgs = world.render(
-            viewmats,
-            eyes.get_intrinsics().repeat(x.size, 1, 1),
-            eyes.width,
-            eyes.height
-        )
+    
+    imgs = world.render(
+        viewmats,
+        intrinsics,
+        eyes.width,
+        eyes.height
+    )
     
     patches = img_utils.get_center_patch(imgs, wh, ww)
     img_combined = img_utils.combine_images(
-        patches[::2, :, :],
-        patches[1::2, :, :]
+        patches[:-1, ...],
+        patches[-1, ...]
         )
     blurs = img_utils.blur_detection(img_combined)
-
     return blurs

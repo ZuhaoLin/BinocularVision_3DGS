@@ -60,6 +60,7 @@ def main():
         world,
         beyes,
         n_neighbors=40,
+        threshold=120,
         save_values=True,
         generate_neighbors_params=gen_neigh_params
     )
