@@ -1,7 +1,7 @@
 import torch
 from plyfile import PlyData
 import numpy as np
-from typing import Union
+from typing import Union, List
 
 def lookat_matrix(lookat_point, up, position):
    position = -position
@@ -192,3 +192,7 @@ def process_ply(ply_file_path):
       values['opacity'][i] = opacity
 
    return values
+
+def send_all_to_device(tensors: List[torch.Tensor], device='cuda'):
+   tensors_device = [tensor.to(device) for tensor in tensors]
+   return tensors_device

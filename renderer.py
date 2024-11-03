@@ -4,41 +4,44 @@ import torch.nn.functional as F
 
 from gsplat._helper import load_test_data
 from gsplat.rendering import rasterization
+from nerfstudio.cameras import camera_utils
 
 from plyfile import PlyData
 import sklearn.preprocessing
 import cv2 as cv
+from binocular_vision import UP
 
 import utils
+import simworld
 
 import os
 
 def main():
    print(os.getcwd())
-   splat_filepath = r'./exports/IMG_5431/splat.ply'                                                      # Specify ply file of splat
+   splat_filepath = r'./exports/IMG_5435/splat.ply'                                                     # Specify ply file of splat
    c2w = torch.eye(4)                                                                                    # Initial camera transform
    w2c = torch.eye(4)
    height, width = 1080, 1920                                                                         # Image height and width
-   camera_intrinsic = np.array([[500, 0, int(width/2)], [0, 500, int(height/2)], [0, 0, 1]])          # Arbitrary camera intrinsics matrix
+   camera_intrinsic = torch.Tensor([[500, 0, int(width/2)], [0, 500, int(height/2)], [0, 0, 1]])          # Arbitrary camera intrinsics matrix
 
-   t = 0.05                                                                                           # Rate to adjust camera
+   t = 0.01                                                                                           # Rate to adjust camera
 
    torch.manual_seed(42)
    device = "cuda"
    data = utils.process_ply(splat_filepath)                                                                 # Read ply file
 
-   # load .ply file data for processing
-   means = torch.from_numpy(data['position']).float().to(device)
-   quats = torch.from_numpy(data['rot']).float().to(device)
-   scales = torch.from_numpy(data['scales']).float().to(device)
-   opacities = torch.from_numpy(data['opacity']).float().to(device)
-   colors = torch.from_numpy(data['color']).float().to(device)
+   # # load .ply file data for processing
+   # means = torch.from_numpy(data['position']).float().to(device)
+   # quats = torch.from_numpy(data['rot']).float().to(device)
+   # scales = torch.from_numpy(data['scales']).float().to(device)
+   # opacities = torch.from_numpy(data['opacity']).float().to(device)
+   # colors = torch.from_numpy(data['color']).float().to(device)
    
-   # Camera intrinsics
-   Ks = torch.from_numpy(camera_intrinsic)[None, :, :].float().to(device)
+   # # Camera intrinsics
+   # Ks = torch.from_numpy(camera_intrinsic)[None, :, :].float().to(device)
 
-   # Initialize the camera properties
-   x, y, z = 0, 0, 0
+   # # Initialize the camera properties
+   # x, y, z = 0, 0, 0
 
    # Plot means for viz purposes
    # import matplotlib.pyplot as plt
@@ -46,35 +49,27 @@ def main():
    # ax.plot(data['position'][:, 0], data['position'][:, 1], data['position'][:, 2], 'b.')
    # plt.show()
 
-   # Example data
-   # (
-   #    means,
-   #    quats,
-   #    scales, 
-   #    opacities,
-   #    colors,
-   #    viewmats1,
-   #    Ks1,
-   #    width1,
-   #    height1,
-   # ) = load_test_data(device=device)
-
-   eye_loc = torch.tensor([3, -3, 2]).float()
-   # look_pt = torch.Tensor([0, 0, 0]).float()
-   look_pt = torch.from_numpy(data['position'][0, :]).float()
 
 
+   world = simworld.simworld(data)
 
-   lookat = eye_loc - look_pt
-   Y = torch.Tensor([0, 0, -1])
+   red_dot = {
+      'means': torch.Tensor([0, 0, 0]),
+      'quats': torch.Tensor([1, 0, 0, 0]),
+      'scales': torch.Tensor([0.01, 0.01, 0.01]),
+      'opacities': torch.Tensor([1]),
+      'colors': torch.Tensor([1, 0, 0])
+   }
 
-   import nerfstudio.cameras.camera_utils as camera_utils
-   c2w = torch.eye(4)
-   # c2w[:-1, :] = camera_utils.viewmatrix(lookat, Y, -eye_loc)
+   # eye_loc = torch.Tensor([0, 0, 0]).float()
+   # look_pt = red_dot['means'].float()
+   # look = look_pt - eye_loc
+   # c2w[:-1, :] = camera_utils.viewmatrix(look.flatten(), UP.flatten(), eye_loc.flatten())
+   # w2c = utils.quick_viewmat_inv(c2w)
 
-   lookat = lookat_matrix(look_pt, Y, eye_loc)
-   # print(lookat)
-   print(torch.linalg.inv(lookat))
+   ind = world.add_splats(**red_dot)
+
+   camera_intrinsic = camera_intrinsic.float().reshape(-1, 3, 3)
 
    while True:
       # Camera loop
@@ -89,38 +84,29 @@ def main():
       # viewmats = torch.linalg.inv(c2w)[None, :, :].float().to(device)
       # viewmats = lookat[None, :, :].float().to(device)
 
-      print(f'w2c:\n {viewmats}')
-      print(f'c2w:\n {torch.linalg.inv(viewmats)}')
+      # print(f'w2c:\n {viewmats}')
+      # print(f'c2w:\n {torch.linalg.inv(viewmats)}')
 
-      C = len(viewmats)
-      N = len(means)
+      # C = len(viewmats)
+      # N = len(means)
 
-      render_colors, render_alphas, meta = rasterization(
-         means,
-         quats,
-         scales,
-         opacities,
-         colors,
-         viewmats,
-         Ks,
-         width=width,
-         height=height,
-         near_plane=0.2,
-         far_plane=5,
-         render_mode='RGB+D'
-      )
+      # render_colors, render_alphas, meta = rasterization(
+      #    means,
+      #    quats,
+      #    scales,
+      #    opacities,
+      #    colors,
+      #    viewmats,
+      #    Ks,
+      #    width=width,
+      #    height=height,
+      #    near_plane=0.2,
+      #    far_plane=5,
+      #    render_mode='RGB+D'
+      # )
 
-
-
-      C = render_colors.shape[0]
-      assert render_colors.shape == (C, height, width, 4)
-      assert render_alphas.shape == (C, height, width, 1)
-
-      background = torch.zeros(3, device=device)
-
-      render_rgbs = render_colors[..., 0:3] + (1-render_alphas) * background
-      render_depths = render_colors[..., 3:4]
-      render_depths = render_depths / render_depths.max()
+      img = world.render(viewmats, camera_intrinsic, width, height)
+      img = np.take(img, [2, 1, 0], axis=3).squeeze()
 
       # Show Images
       # canvas = (
@@ -135,12 +121,7 @@ def main():
       #    .cpu()
       #    .numpy()
       # )
-
-      rgbs = torch.clamp(render_rgbs, 0.0, 1.0).reshape(height, width, 3).cpu().numpy()
-      img = (rgbs*255).astype(np.uint8)
-      img = np.take(img, [2, 1, 0], axis=2)
-
-      cv.imshow('Image', img)
+      cv.imshow('Image', np.array(img, dtype=np.uint8))
       key = cv.waitKey(0)
 
       if key == ord('p'):
@@ -169,6 +150,20 @@ def main():
          w2c =   get_Rx(t, shape=4, as_type=torch.FloatTensor) @ w2c
       elif key == ord('x'):
          w2c =   get_Rx(-t, shape=4, as_type=torch.FloatTensor) @ w2c
+      elif key == ord('['):
+         world.means[ind, 0] += t
+      elif key == ord(']'):
+         world.means[ind, 0] -= t
+      elif key == ord('k'):
+         world.means[ind, 1] += t
+      elif key == ord('l'):
+         world.means[ind, 1] -= t
+      elif key == ord('n'):
+         world.means[ind, 2] += t
+      elif key == ord('m'):
+         world.means[ind, 2] -= t
+      elif key == ord('j'):
+         print(world.means[ind, :])
       else:
          continue
 

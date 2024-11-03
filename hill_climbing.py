@@ -3,7 +3,9 @@ import binocular_vision
 import image_processing_utils as img_utils
 
 import torch
+from torchvision.utils import save_image
 import numpy as np
+from typing import Union
 
 def hill_climbing(
    x0,
@@ -83,6 +85,21 @@ def evaluate_neighbors(
     wh: int = 100,
     ww: int = 100,
 ):
+    imgs = generate_images_from_peeks(x, world, eyes)
+    patches = img_utils.get_center_patch(imgs, wh, ww)
+    img_combined = img_utils.combine_images(
+        patches[:-1, ...],
+        patches[-1, ...]
+        )
+    blurs = img_utils.blur_detection(img_combined)
+    blurs_norm = blurs / (wh*ww)
+    return blurs_norm
+
+def generate_images_from_peeks(
+    x: Union[torch.Tensor, np.ndarray, np.number],
+    world: simworld.simworld,
+    eyes: binocular_vision.binocular_eyes
+) -> torch.Tensor:
     left_viewmats = eyes.left_eye.generate_yaw_peeks(x, mat_type='w2c')
     if np.isscalar(x):
         repeat_val = 1
@@ -92,17 +109,7 @@ def evaluate_neighbors(
     viewmats = torch.eye(4).repeat(repeat_val+1, 1, 1)
     viewmats[:-1, ...] = left_viewmats
     viewmats[-1, ...] = eyes.right_eye.get_w2c()
-    # viewmats[::2, :, :] = left_viewmats
-    # viewmats[1::2, :, :] = eyes.right_eye.get_w2c()
 
-    # if np.isscalar(x):
-    #     imgs = world.render(
-    #         viewmats,
-    #         eyes.get_intrinsics(),
-    #         eyes.width,
-    #         eyes.height
-    #     )
-    # else:
     intrinsics = eyes.left_eye \
         .get_intrinsics_matrices() \
         .reshape(1, 3, 3) \
@@ -123,11 +130,30 @@ def evaluate_neighbors(
         eyes.width,
         eyes.height
     )
-    
-    patches = img_utils.get_center_patch(imgs, wh, ww)
-    img_combined = img_utils.combine_images(
-        patches[:-1, ...],
-        patches[-1, ...]
-        )
-    blurs = img_utils.blur_detection(img_combined)
-    return blurs
+
+    return imgs
+
+def save_images_from_peeks(
+    x: Union[torch.Tensor, np.ndarray, np.number],
+    world: simworld.simworld,
+    eyes: binocular_vision.binocular_eyes,
+    save_dir: str,
+    save_combined: bool = True,
+):
+    imgs = generate_images_from_peeks(x, world, eyes)
+    if save_combined:
+        combo = img_utils.combine_images(
+            imgs[:-1, ...],
+            imgs[-1, ...]
+            ).permute(0, 3, 1, 2)
+    imgs = imgs.permute(0, 3, 1, 2)
+    for i in range(imgs.shape[0]):
+        if i != imgs.shape[0]-1:
+            rev_num = imgs.shape[0] - 1 - i
+            name = f'left_eye_{rev_num}'
+            if save_combined:
+                combo_name = f'combined_{rev_num}'
+                save_image(combo[i, ...]/255, save_dir+'/'+combo_name+'.png')
+        else:
+            name = f'right_eye_0'
+        save_image(imgs[i, ...]/255, save_dir+'/'+name+'.png')

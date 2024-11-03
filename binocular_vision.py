@@ -191,10 +191,16 @@ class binocular_eyes:
         self.move_up(-x)
     
     def get_left_eye_position(self):
-        return self.left_eye.camera_to_worlds[:-1, -1][:, None]
+        return self.left_eye.get_position()
     
     def get_right_eye_position(self):
-        return self.right_eye.camera_to_worlds[:-1, -1][:, None]
+        return self.right_eye.get_position()
+    
+    def get_left_eye_look_vector(self):
+        return self.left_eye.get_look_vector()
+    
+    def get_right_eye_look_vector(self):
+        return self.right_eye.get_look_vector()
 
     def get_position(self):
         return utils.quick_viewmat_inv(self.w2o)[:-1, -1][:, None]
@@ -219,6 +225,20 @@ class binocular_eyes:
         Ks2 = self.right_eye.get_intrinsics_matrices().reshape((1, 3, 3)).float()
         Ks = torch.cat((Ks1, Ks2), 0).float()
         return Ks
+    
+    def get_look_point(self):
+        left_look_vec = self.get_left_eye_look_vector()
+        right_look_vec = self.get_right_eye_look_vector()
+        left_pos = self.get_left_eye_position()
+        right_pos = self.get_right_eye_position()
+
+        eye_ext = torch.eye(3).repeat([2, 1])
+        slopes = -torch.cat((left_look_vec, right_look_vec))
+        A = torch.cat((eye_ext, slopes), dim=1)
+        B = torch.cat((left_pos, right_pos))
+
+        x, err, rank, sing = torch.linalg.lstsq(A, B)
+        return x[:-1], err
     
     def _set_eye_positions(self):
         temp_left = copy.deepcopy(self.w2o)
@@ -307,3 +327,9 @@ class eyeball(cameras.Cameras):
 
     def get_w2c(self):
         return utils.quick_viewmat_inv(self.camera_to_worlds)
+    
+    def get_position(self):
+        return self.camera_to_worlds[:-1, -1][:, None]
+    
+    def get_look_vector(self):
+        return self.camera_to_worlds[:-1, 2][:, None]

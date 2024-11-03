@@ -47,7 +47,7 @@ def main():
    data = utils.process_ply(splat_filepath)                                                           # Read ply file
 
    # Detection window size
-   wh, wl = 100, 100
+   wh, wl = 50, 50
 
    # Point visualization
    # ax = plt.figure().add_subplot(projection='3d')
@@ -82,12 +82,22 @@ def main():
 
    # Test eye location
    eye_loc = torch.Tensor([-0.43, -0.4, -0.19]).float()
-   # look_pt = torch.from_numpy(centers[0, :]).float()
-   look_pt = torch.Tensor([-0.1, 0, -0.3]).float()
+   # look_pt = torch.Tensor([0, 0, -10]).float()
+   look_pt = torch.Tensor([-0.1473, -0.0927, -0.2796]).float()
 
    beyes.set_position(eye_loc)
    beyes.face_lookat(look_pt)
    beyes.eye_lookat(look_pt)
+
+   red_dot = {
+      'means': torch.Tensor([-0.1473, -0.0927, -0.2796]),
+      'quats': torch.Tensor([1, 0, 0, 0]),
+      'scales': torch.Tensor([0.01, 0.01, 0.01]),
+      'opacities': torch.Tensor([0]),
+      'colors': torch.Tensor([1, 0, 0])
+   }
+
+   ind = world.add_splats(**red_dot)
 
 
    while True:
@@ -167,6 +177,7 @@ def main():
       combined_img = img_utils.combine_images(left_img, right_img)
 
       # Blur detection
+      print(f'Combined blur: {img_utils.blur_detection(combined_img)}')
       blur = []
       for img in [left_img, right_img, combined_img]:
          blur.append(img_utils.blur_detection(img))
@@ -208,9 +219,9 @@ def main():
       elif key == ord('g'):
          beyes.pitch(-t)
       elif key == ord('['):
-         beyes.left_eye.yaw(t)
+         beyes.right_eye.yaw(t)
       elif key == ord(']'):
-         beyes.left_eye.yaw(-t)
+         beyes.right_eye.yaw(-t)
       elif key == ord('j'):
          print(beyes.get_position())
       # print(eye_loc)

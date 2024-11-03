@@ -3,9 +3,6 @@ import torch
 import cv2 as cv
 from typing import Union
 
-import binocular_vision
-import simworld
-
 def combine_images(image1, image2):
     # if (image1.shape != image2.shape) and (image1.ndim != image2.ndim), \
     # f'image1 and image2 must be the same shape.' + \
@@ -103,16 +100,3 @@ def draw_center_patch(images, win_height, win_width, color=(255, 0, 0), thicknes
             )
 
     return images
-
-def save_images_from_peeks(
-    x: Union[torch.Tensor, np.ndarray, np.number],
-    world: simworld.simworld,
-    eyes: binocular_vision.binocular_eyes
-):
-    left_viewmats = eyes.left_eye.generate_yaw_peeks(x, mat_type='w2c')
-    if np.isscalar(x):
-        viewmats = torch.eye(4).repeat(2, 1, 1)
-        viewmats[0, :, :] = left_viewmats
-        viewmats[1, :, :] = eyes.right_eye.get_w2c()
-    else:
-        viewmats = torch.eye(4).repeat(x.size+1, 1, 1)
