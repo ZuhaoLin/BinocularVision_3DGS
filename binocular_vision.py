@@ -208,8 +208,11 @@ class binocular_eyes:
     def get_rotation_matrix(self):
         return self.w2o[:-1, :-1]
     
-    def get_eyes_w2c(self):
-        return (self.get_left_eye_w2c(), self.get_right_eye_w2c())
+    def get_eyes_w2c(self, astensor=True):
+        w2cs = (self.get_left_eye_w2c(), self.get_right_eye_w2c())
+        if astensor:
+            return torch.stack(w2cs)
+        return w2cs
 
     def get_left_eye_w2c(self):
         return utils.quick_viewmat_inv(self.left_eye.camera_to_worlds)
@@ -217,8 +220,11 @@ class binocular_eyes:
     def get_right_eye_w2c(self):
         return utils.quick_viewmat_inv(self.right_eye.camera_to_worlds)
     
-    def get_eyes_c2w(self):
-        return (self.left_eye.camera_to_worlds, self.right_eye.camera_to_worlds)
+    def get_eyes_c2w(self, astensor=True):
+        c2ws = (self.left_eye.camera_to_worlds, self.right_eye.camera_to_worlds)
+        if astensor:
+            return torch.stack(c2ws)
+        return c2ws
     
     def get_intrinsics(self):
         Ks1 = self.left_eye.get_intrinsics_matrices().reshape((1, 3, 3)).float()

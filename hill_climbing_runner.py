@@ -45,7 +45,8 @@ def main():
     world = simworld.simworld(data)
 
     # Test eye location
-    eye_loc = torch.Tensor([-0.43, -0.4, -0.19]).float()
+    # eye_loc = torch.Tensor([-0.43, -0.4, -0.19]).float()
+    eye_loc = torch.Tensor([-0.4271, 0.2371, -0.1328]).float()
     look_pt = torch.Tensor([-0.1, 0, -0.3]).float()
 
     beyes.set_position(eye_loc)

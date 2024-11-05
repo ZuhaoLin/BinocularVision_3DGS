@@ -18,7 +18,7 @@ import os
 
 def main():
    print(os.getcwd())
-   splat_filepath = r'./exports/IMG_5435/splat.ply'                                                     # Specify ply file of splat
+   splat_filepath = r'./exports/IMG_5463/splat.ply'                                                     # Specify ply file of splat
    c2w = torch.eye(4)                                                                                    # Initial camera transform
    w2c = torch.eye(4)
    height, width = 1080, 1920                                                                         # Image height and width
@@ -163,6 +163,8 @@ def main():
       elif key == ord('m'):
          world.means[ind, 2] -= t
       elif key == ord('j'):
+         c2w = utils.quick_viewmat_inv(w2c)
+         print(c2w[:-1, -1])
          print(world.means[ind, :])
       else:
          continue
