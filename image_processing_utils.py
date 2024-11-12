@@ -1,7 +1,101 @@
 import numpy as np
 import torch
+from torchvision.transforms.functional import rgb_to_grayscale
 import cv2 as cv
 from typing import Union
+
+def match_images_SIFT(imgs1, imgs2, threshold=1000, grey=False):
+    '''
+    Images must be in CHW order
+    '''
+    sift = cv.SIFT.create()
+    matcher = cv.BFMatcher()
+
+    ## Keypoint detection on both sets of images
+    kp1, des1 = [], []
+    for img1 in imgs1:
+        if not grey:
+            img1 = rgb_to_grayscale(img1)
+        img1 = convert_CHW2HWC(img1).squeeze().numpy().astype(np.uint8)
+
+        kp, des = sift.detectAndCompute(img1, None)
+        if des is None:
+            continue
+        else:
+            kp1.append(kp)
+            des1.append(des)
+
+    kp2, des2 = [], []
+    for img2 in imgs2:
+        if not grey:
+            img2 = rgb_to_grayscale(img2)
+        img2 = convert_CHW2HWC(img2).squeeze().numpy().astype(np.uint8)
+
+        kp, des = sift.detectAndCompute(img2, None)
+        if des is None:
+            continue
+        else:
+            kp2.append(kp)
+            des2.append(des)
+
+    ## Matching between both sets of images
+    distances = torch.full([len(kp1), len(kp2)], float('Inf'), dtype=float)
+    for im1, (keypoints1, descriptors1) in enumerate(zip(kp1, des1)):
+        if descriptors1.shape[0] < 2:
+            continue
+        for im2, (keypoints2, descriptors2) in enumerate(zip(kp2, des2)):
+            if descriptors2.shape[0] < 2:
+                continue
+            matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
+            good = []
+            total_dist = 0
+            total = 0
+            for m,n in matches:
+                if m.distance < 0.75*n.distance:
+                    good.append([m])
+                    total_dist+=m.distance
+                    total+=1
+            if total == 0:
+                continue
+            else:
+                distances[im1, im2] = total_dist / total
+    
+    ## Finding which matches passed the threshold
+    img_matches = torch.argmin(distances, dim=1)
+    passed = distances[torch.arange(0, distances.shape[0]), img_matches] < threshold
+    passed1 = torch.where(passed)[0]
+    passed2 = img_matches[passed]
+
+    matched_imgs = list(zip([imgs1[x] for x in passed1], [imgs2[x] for x in passed2]))
+    passed_inds = list(zip(passed1, passed2))
+
+    return matched_imgs, passed_inds
+
+
+
+def image_crop(image, crop_bounds):
+    '''
+    Crops the image to the given crop_bounds in (x1, y1, x2, y2) format.
+    Image must be in CHW format
+    '''
+
+    cropped = []
+    for i in range(crop_bounds.shape[0]):
+        x1, y1, x2, y2 = torch.round(crop_bounds[i, :]).type(torch.int)
+        cropped.append(image[:, y1:y2, x1:x2])
+    return cropped
+
+def convert_HWC2CHW(images: torch.Tensor):
+    if images.ndim == 4:
+        return images.permute((0, 3, 1, 2))                                                  # Was in BHWC format
+    elif images.ndim == 3:
+        return images.permute((2, 0, 1))
+    
+def convert_CHW2HWC(images: torch.Tensor):
+    if images.ndim == 4:
+        return images.permute((0, 2, 3, 1))                                                  # Was in BCHW format
+    elif images.ndim == 3:
+        return images.permute((1, 2, 0))
 
 def combine_images(image1, image2):
     # if (image1.shape != image2.shape) and (image1.ndim != image2.ndim), \
@@ -35,7 +129,7 @@ def blur_detection(
 
 def image_distance_error(image1, image2):
     '''
-
+    Bad function
     '''
     assert image1.shape == image2.shape, \
     f'image1 and image2 must be the same shape.' + \

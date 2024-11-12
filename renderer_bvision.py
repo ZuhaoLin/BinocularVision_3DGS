@@ -15,6 +15,7 @@ import os
 
 def main():
     print(os.getcwd())
+    # splat_filepath = r'./exports/IMG_5435/splat.ply'
     splat_filepath = r'./exports/IMG_5463/splat.ply'                                                   # Specify ply file of splat
     height, width = 1080, 1200                                                                         # Image size
     fx, fy = 500.0, 500.0                                                                              # Cam intrinsics
@@ -93,8 +94,8 @@ def main():
 
     ind = world.add_splats(**red_dot)
 
-    # object_focusing(world, beyes)
-    diverging(world, beyes, wh, wl, t)
+    object_focusing(world, beyes)
+    # diverging(world, beyes, wh, wl, t)
 
     return
 
@@ -310,23 +311,39 @@ def object_focusing(
     left_labels = left_result.boxes.cls
     right_labels = right_result.boxes.cls
 
-    print(left_labels)
-    print(right_labels)
+    # Search for specified class
+    search_cls = 41
+    left_searched = left_labels == search_cls
+    right_searched = right_labels == search_cls
+    left_boxes = left_result.boxes[left_searched]
+    right_boxes = right_result.boxes[right_searched]
 
+    # Crop all the objects of the specified class detected
+    left_cropped = img_utils.image_crop(source[0]*255, left_boxes.xyxy)
+    right_cropped = img_utils.image_crop(source[1]*255, right_boxes.xyxy)
+    # Match objects in left to objects in right
+    matched_imgs, inds = img_utils.match_images_SIFT(left_cropped, right_cropped)
+    print(inds)
 
-    # # Restructure tensors for model compatibility BCHW format
-    # left_source = left_img.permute((2, 0, 1))
-    # left_source = torchvision.transforms.functional.resize(left_source, [1120, 1024])
-    # left_source = left_source[None, ...] / 255
+    # Show matched objects
+    for [left_img, right_img] in matched_imgs:
+        left_img = img_utils.convert_CHW2HWC(left_img)/255
+        right_img = img_utils.convert_CHW2HWC(right_img)/255
+        plt.figure()
+        plt.imshow(left_img)
+        plt.title('Left Image Object')
+        plt.figure()
+        plt.imshow(right_img)
+        plt.title('Right Image Object')
+        plt.show()
 
-    # results = model.predict(source=left_source)
+    
 
-    # left_obj_lab = results[0].boxes.cls
-
-    print('Done predicting')
+    return
+    # Show the detected objects in both cameras
+    print('Done Predicting')
     img_left = results[0].plot()
     img_right = results[1].plot()
-
     plt.figure()
     plt.imshow(img_left)
     plt.title('left eye detection')
@@ -335,8 +352,6 @@ def object_focusing(
     plt.title('right eye detection')
     plt.show()
 
-
-    print('done')
 
 
 if __name__ == "__main__":
