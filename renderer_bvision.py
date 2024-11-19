@@ -5,6 +5,7 @@ import nerfstudio.cameras.cameras as cameras
 import torchvision.transforms.functional
 from ultralytics import YOLO
 import matplotlib.pyplot as plt
+from simple_pid import PID
 
 import utils
 import simworld
@@ -17,7 +18,7 @@ def main():
     print(os.getcwd())
     # splat_filepath = r'./exports/IMG_5435/splat.ply'
     splat_filepath = r'./exports/IMG_5463/splat.ply'                                                   # Specify ply file of splat
-    height, width = 1080, 1200                                                                         # Image size
+    height, width = 1120, 1024                                                                         # Image size
     fx, fy = 500.0, 500.0                                                                              # Cam intrinsics
     cx, cy = width/2, height/2                                                                         # Camera intrinsics
 
@@ -288,24 +289,130 @@ def object_focusing(
     eyes: binocular_vision.binocular_eyes,
     device='cuda'
 ):
-    model = YOLO('yolo11n.yaml')
-    model = YOLO('yolo11n.pt')
+    # YOLO detection models
+    model_left = YOLO('yolo11n.pt')
+    model_right = YOLO('yolo11n.pt')
 
-    viewmats = eyes.get_eyes_w2c().float().to(device)
+    # Camera/image properties
     Ks = eyes.get_intrinsics().float().to(device)
     width = eyes.width
     height = eyes.height
+    center = (int(width/2), int(height/2))
 
-    img = world.render(viewmats, Ks, width, height)
-    # img = np.take(img, [2, 1, 0], axis=3)
-    left_img, right_img = img[0, ...], img[1, ...]
+    acquired_id = None
 
-    # Restructure tensors for model compatibility in BCHW format
-    source = img.permute((0, 3, 1, 2))                                                  # Was in BHWC format
-    source = torchvision.transforms.functional.resize(source, [1120, 1024])             # Try to preserve as much data as possible
-    source = source / 255                                                               # Normalize to [0, 1]
+    # PID Controllers
+    pidx = PID(0.0005, 0.00001, 0.00000, center[0])
+    pidy = PID(0.0005, 0.00001, 0.00000, center[1])
 
-    results = model.predict(source=source)
+    while True:
+        viewmats = eyes.get_eyes_w2c().float().to(device)
+        img = world.render(viewmats, Ks, width, height)
+        left_img, right_img = img[0, ...], img[1, ...]
+
+        # Restructure tensors for model compatibility in BCHW format
+        source = img.permute((0, 3, 1, 2))                                                  # Was in BHWC format
+        source = torchvision.transforms.functional.resize(source, [1120, 1024])             # Try to preserve as much data as possible
+        source = np.array(source.permute((0, 2, 3, 1))).astype(np.uint8)
+        source[:, :, :, [0, 2]] = source[:, :, :, [2, 0]]
+
+        left_result = model_left.track(
+            source=source[0, ...],
+            conf=0.3,
+            persist=True
+        )[0]
+
+        right_result = model_right.track(
+            source=source[1, ...],
+            conf=0.3,
+            persist=True
+        )[0]
+
+        if acquired_id is None:
+            # If the object has not been determined yet, this will obtain the matching ID
+            search_cls = 41
+
+            # Search for specified class
+            left_labels = left_result.boxes.cls
+            right_labels = right_result.boxes.cls
+            left_searched = left_labels == search_cls
+            right_searched = right_labels == search_cls
+            left_boxes = left_result.boxes[left_searched]
+            right_boxes = right_result.boxes[right_searched]
+            
+            # Crop all the objects of the specified class detected
+            left_img = img_utils.convert_HWC2CHW(torch.tensor(source[0, ...]))
+            right_img = img_utils.convert_HWC2CHW(torch.tensor(source[1, ...]))
+            left_cropped = img_utils.image_crop(left_img, left_boxes.xyxy)
+            right_cropped = img_utils.image_crop(right_img, right_boxes.xyxy)
+            # Match objects in left to objects in right
+            matched_imgs, inds = img_utils.match_images_SIFT(left_cropped, right_cropped)
+            left_ind, right_ind = inds[0]
+            acquired_id = (left_boxes.id[left_ind], right_boxes.id[right_ind])
+
+            if len(matched_imgs) != 0:
+                # Show the first matched class
+                left_img, right_img = matched_imgs[0]
+                left_img = np.array(img_utils.convert_CHW2HWC(left_img), dtype=np.uint8)
+                right_img = np.array(img_utils.convert_CHW2HWC(right_img), dtype=np.uint8)
+                cv.imshow('Left Object', left_img)
+                cv.imshow('Right Object', right_img)
+                print(f'Left ID: {acquired_id[0]}\nRight ID: {acquired_id[1]}')
+
+            # Show whole image with all boxes
+            left_det = left_result.plot()
+            right_det = right_result.plot()
+
+        else:
+            # Look for the acquired id
+            left_ind = np.where(left_result.boxes.id == acquired_id[0])[0]
+            right_ind = np.where(right_result.boxes.id == acquired_id[1])[0]
+
+            if left_ind.size == 0 or right_ind.size == 0:
+                print('Cannot find object')
+                left_det = left_result.orig_img
+                right_det = right_result.orig_img
+            else:
+                left_obj_box = left_result.boxes[left_ind]
+                right_obj_box = right_result.boxes[right_ind]
+
+                # Draw blue rectangle around selected object
+                left_det = cv.rectangle(
+                    left_result.orig_img,
+                    tuple(np.array(np.rint(left_obj_box.xyxy[0, :2]), dtype=int)),
+                    tuple(np.array(np.rint(left_obj_box.xyxy[0, 2:]), dtype=int)),
+                    (255, 0, 0)
+                )
+
+                right_det = cv.rectangle(
+                    right_result.orig_img,
+                    tuple(np.array(np.rint(right_obj_box.xyxy[0, :2]), dtype=int)),
+                    tuple(np.array(np.rint(right_obj_box.xyxy[0, 2:]), dtype=int)),
+                    (255, 0, 0)
+                )
+
+                pos_xl, pos_yl = left_obj_box.xywh[0, :2]
+                print(f'pos_xl: {pos_xl}\npos_yl: {pos_yl}')
+                signal_xl, signal_yl = pidx(pos_xl), -pidy(pos_yl)
+
+                # Draw xl and yl for reference
+                left_det = cv.circle(left_det, (int(pos_xl), int(pos_yl)), 5, (0, 255, 0), 2)
+
+            print(f'x signal: {signal_xl}\ny signal: {signal_yl}')
+            eyes.left_eye.yaw(float(signal_xl))
+            eyes.left_eye.pitch(float(signal_yl))
+
+
+        left_det = cv.circle(left_det, center, 5, (0, 0, 255), 2)
+        right_det = cv.circle(right_det, center, 5, (0, 0, 255), 2)
+        cv.imshow('Left Tracking', left_det)
+        cv.imshow('Right Tracking', right_det)
+
+        key = cv.waitKey(1)
+        if not keybindings(key, eyes, 0.01):
+            break
+
+    return
 
     left_result, right_result = results[0], results[1]
     left_labels = left_result.boxes.cls
@@ -339,7 +446,7 @@ def object_focusing(
 
     
 
-    return
+    # return
     # Show the detected objects in both cameras
     print('Done Predicting')
     img_left = results[0].plot()

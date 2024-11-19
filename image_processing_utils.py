@@ -3,6 +3,7 @@ import torch
 from torchvision.transforms.functional import rgb_to_grayscale
 import cv2 as cv
 from typing import Union
+import matplotlib.pyplot as plt
 
 def match_images_SIFT(imgs1, imgs2, threshold=1000, grey=False):
     '''
@@ -14,6 +15,8 @@ def match_images_SIFT(imgs1, imgs2, threshold=1000, grey=False):
     ## Keypoint detection on both sets of images
     kp1, des1 = [], []
     for img1 in imgs1:
+        # plt.imshow(convert_CHW2HWC(img1/255))
+        # plt.show()
         if not grey:
             img1 = rgb_to_grayscale(img1)
         img1 = convert_CHW2HWC(img1).squeeze().numpy().astype(np.uint8)
@@ -27,6 +30,8 @@ def match_images_SIFT(imgs1, imgs2, threshold=1000, grey=False):
 
     kp2, des2 = [], []
     for img2 in imgs2:
+        # plt.imshow(convert_CHW2HWC(img2/255))
+        # plt.show()
         if not grey:
             img2 = rgb_to_grayscale(img2)
         img2 = convert_CHW2HWC(img2).squeeze().numpy().astype(np.uint8)
@@ -37,6 +42,9 @@ def match_images_SIFT(imgs1, imgs2, threshold=1000, grey=False):
         else:
             kp2.append(kp)
             des2.append(des)
+
+    if len(kp1) == 0 or len(kp2) == 0:
+        return [], []
 
     ## Matching between both sets of images
     distances = torch.full([len(kp1), len(kp2)], float('Inf'), dtype=float)
