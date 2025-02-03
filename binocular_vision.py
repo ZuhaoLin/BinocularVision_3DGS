@@ -233,6 +233,9 @@ class binocular_eyes:
         return Ks
     
     def get_look_point(self):
+        '''
+        Gets where the two center rays of the eyes intersect in virtual space
+        '''
         left_look_vec = self.get_left_eye_look_vector()
         right_look_vec = self.get_right_eye_look_vector()
         left_pos = self.get_left_eye_position()

@@ -6,6 +6,7 @@ import torchvision.transforms.functional
 from ultralytics import YOLO
 import matplotlib.pyplot as plt
 from simple_pid import PID
+import copy
 
 import utils
 import simworld
@@ -76,8 +77,9 @@ def main():
     Ks = torch.cat((Ks1, Ks2), 0).float().to(device)
 
     # Test eye location
-    # eye_loc = torch.Tensor([-0.43, -0.4, -0.19]).float()
-    eye_loc = torch.Tensor([-0.4271, 0.2371, -0.1328]).float()
+    eye_loc = torch.Tensor([-0.43, -0.4, -0.19]).float()
+    # eye_loc = torch.Tensor([-0.4271, 0.2371, -0.1328]).float()
+    # eye_loc = torch.Tensor([-0.0302, 0.50, -0.1552]).float()
     # look_pt = torch.Tensor([-0.1473, -0.0927, -0.2796]).float()
     look_pt = torch.Tensor([-0.1800, 0.1700, -0.3300]).float()
 
@@ -210,7 +212,7 @@ def main():
         if not keybindings(key, beyes, t):
             break
 
-def keybindings(key, eyes, t):
+def keybindings(key, eyes: binocular_vision.binocular_eyes, t):
     if key == ord('p'):
         return False
     elif key == ord('w'):
@@ -238,7 +240,13 @@ def keybindings(key, eyes, t):
     elif key == ord(']'):
         eyes.right_eye.yaw(-t)
     elif key == ord('j'):
-        print(eyes.get_position())
+        eye_pos = eyes.get_position()
+        intersect_pos, _ = eyes.get_look_point()
+        dist = torch.sqrt(torch.sum((eye_pos - intersect_pos) ** 2))
+
+        print(f'Binocular Eye Position: {eye_pos}')
+        print(f'Intersect Position: {intersect_pos}')
+        print(f'Distance: {dist}')
 
     return True
 
@@ -270,7 +278,7 @@ def diverging(
         combined_img = img_utils.combine_images(left_img, right_img)
 
         # Blur detection
-        print(f'Combined blur: {img_utils.blur_detection(combined_img)}')
+        # print(f'Combined blur: {img_utils.blur_detection(combined_img)}')
 
         left_img = img_utils.draw_center_patch(left_img, wh, wl)
         right_img = img_utils.draw_center_patch(right_img, wh, wl)
@@ -302,8 +310,10 @@ def object_focusing(
     acquired_id = None
 
     # PID Controllers
-    pidx = PID(0.0005, 0.00001, 0.00000, center[0])
-    pidy = PID(0.0005, 0.00001, 0.00000, center[1])
+    pidxl = PID(0.0008, 0.00001, 0.00000, center[0])
+    pidyl = PID(0.0008, 0.00001, 0.00000, center[1])
+    pidxr = copy.deepcopy(pidxl)
+    pidyr = copy.deepcopy(pidyl)
 
     while True:
         viewmats = eyes.get_eyes_w2c().float().to(device)
@@ -319,13 +329,15 @@ def object_focusing(
         left_result = model_left.track(
             source=source[0, ...],
             conf=0.3,
-            persist=True
+            persist=True,
+            verbose=False
         )[0]
 
         right_result = model_right.track(
             source=source[1, ...],
             conf=0.3,
-            persist=True
+            persist=True,
+            verbose=False
         )[0]
 
         if acquired_id is None:
@@ -376,40 +388,54 @@ def object_focusing(
                 left_obj_box = left_result.boxes[left_ind]
                 right_obj_box = right_result.boxes[right_ind]
 
-                # Draw blue rectangle around selected object
-                left_det = cv.rectangle(
-                    left_result.orig_img,
-                    tuple(np.array(np.rint(left_obj_box.xyxy[0, :2]), dtype=int)),
-                    tuple(np.array(np.rint(left_obj_box.xyxy[0, 2:]), dtype=int)),
-                    (255, 0, 0)
-                )
+                left_det = left_result.orig_img
+                right_det = right_result.orig_img
 
-                right_det = cv.rectangle(
-                    right_result.orig_img,
-                    tuple(np.array(np.rint(right_obj_box.xyxy[0, :2]), dtype=int)),
-                    tuple(np.array(np.rint(right_obj_box.xyxy[0, 2:]), dtype=int)),
-                    (255, 0, 0)
-                )
+                # # Draw blue rectangle around selected object
+                # left_det = cv.rectangle(
+                #     left_result.orig_img,
+                #     tuple(np.array(np.rint(left_obj_box.xyxy[0, :2]), dtype=int)),
+                #     tuple(np.array(np.rint(left_obj_box.xyxy[0, 2:]), dtype=int)),
+                #     (255, 0, 0)
+                # )
+
+                # right_det = cv.rectangle(
+                #     right_result.orig_img,
+                #     tuple(np.array(np.rint(right_obj_box.xyxy[0, :2]), dtype=int)),
+                #     tuple(np.array(np.rint(right_obj_box.xyxy[0, 2:]), dtype=int)),
+                #     (255, 0, 0)
+                # )
 
                 pos_xl, pos_yl = left_obj_box.xywh[0, :2]
-                print(f'pos_xl: {pos_xl}\npos_yl: {pos_yl}')
-                signal_xl, signal_yl = pidx(pos_xl), -pidy(pos_yl)
+                pos_xr, pos_yr = right_obj_box.xywh[0, :2]
+                # print(f'pos_xl: {pos_xl}\npos_yl: {pos_yl}')
+                signal_xl, signal_yl = pidxl(pos_xl), -pidyl(pos_yl)
+                signal_xr, signal_yr = pidxr(pos_xr), -pidyr(pos_yr)
 
                 # Draw xl and yl for reference
-                left_det = cv.circle(left_det, (int(pos_xl), int(pos_yl)), 5, (0, 255, 0), 2)
+                # left_det = cv.circle(left_det, (int(pos_xl), int(pos_yl)), 5, (0, 255, 0), 2)
+                # right_det = cv.circle(right_det, (int(pos_xr), int(pos_yr)), 5, (0, 255, 0), 2)
 
-            print(f'x signal: {signal_xl}\ny signal: {signal_yl}')
+            # print(f'xl signal: {signal_xl}\nyl signal: {signal_yl}')
+            # print(f'xr signal: {signal_xr}\nyr signal: {signal_yr}')
             eyes.left_eye.yaw(float(signal_xl))
             eyes.left_eye.pitch(float(signal_yl))
+            eyes.right_eye.yaw(float(signal_xr))
+            eyes.right_eye.pitch(float(signal_yr))
 
 
         left_det = cv.circle(left_det, center, 5, (0, 0, 255), 2)
         right_det = cv.circle(right_det, center, 5, (0, 0, 255), 2)
+        combined = img_utils.combine_images(left_det, right_det)
         cv.imshow('Left Tracking', left_det)
         cv.imshow('Right Tracking', right_det)
+        cv.imshow('Combined', combined)
 
         key = cv.waitKey(1)
         if not keybindings(key, eyes, 0.01):
+            cv.imwrite('leye_cup_3.jpg', left_det)
+            cv.imwrite('reye_cup_3.jpg', right_det)
+            cv.imwrite('combined_cup_3.jpg', combined)
             break
 
     return

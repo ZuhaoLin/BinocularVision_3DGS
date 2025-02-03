@@ -111,9 +111,14 @@ def combine_images(image1, image2):
     #     'image1 is of shape {image1.shape} and' + \
     #     'image2 is of shape {image2.shape}'
 
-    combined_img = (image1.type(torch.FloatTensor) + image2.type(torch.FloatTensor)) / 2
+    if isinstance(image1, torch.Tensor):
+        combined_img = (image1.type(torch.FloatTensor) + image2.type(torch.FloatTensor)) / 2
+        combined_img = combined_img.type(torch.IntTensor)
+    elif isinstance(image1, np.ndarray):
+        combined_img = (image1.astype(np.float64) + image2.astype(np.float64)) / 2
+        combined_img = np.rint(combined_img).astype(np.uint8)
 
-    return combined_img.type(torch.IntTensor)
+    return combined_img
 
 def blur_detection(
         image: Union[np.ndarray, torch.Tensor],
