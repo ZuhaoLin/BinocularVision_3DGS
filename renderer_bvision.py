@@ -7,6 +7,7 @@ from ultralytics import YOLO
 import matplotlib.pyplot as plt
 from simple_pid import PID
 import copy
+from PIL import Image
 
 import utils
 import simworld
@@ -18,8 +19,9 @@ import os
 def main():
     print(os.getcwd())
     # splat_filepath = r'./exports/IMG_5435/splat.ply'
-    splat_filepath = r'./exports/IMG_5463/splat.ply'                                                   # Specify ply file of splat
+    splat_filepath = r'../exports/IMG_5463/splat.ply'                                                   # Specify ply file of splat
     height, width = 1120, 1024                                                                         # Image size
+    # height, width = 3840, 2160                                                                         # Image size, 4k
     fx, fy = 500.0, 500.0                                                                              # Cam intrinsics
     cx, cy = width/2, height/2                                                                         # Camera intrinsics
 
@@ -43,7 +45,8 @@ def main():
     data = utils.process_ply(splat_filepath)                                                           # Read ply file
 
     # Detection window size
-    wh, wl = 50, 50
+    wh, wl = 100, 100
+    # wh, wl = height, width
 
     # Point visualization
     # ax = plt.figure().add_subplot(projection='3d')
@@ -97,8 +100,8 @@ def main():
 
     ind = world.add_splats(**red_dot)
 
-    object_focusing(world, beyes)
-    # diverging(world, beyes, wh, wl, t)
+    # object_focusing(world, beyes)
+    diverging(world, beyes, wh, wl, t)
 
     return
 
@@ -265,8 +268,10 @@ def diverging(
 
     width = eyes.width
     height = eyes.height
+    # i=0
 
-    while True:
+    # while True:
+    for i in range(3):
         leye_w2c = eyes.get_left_eye_w2c().reshape((1, 4, 4))
         reye_w2c = eyes.get_right_eye_w2c().reshape((1, 4, 4))
         viewmats = torch.cat((leye_w2c, reye_w2c), 0).float().to(device)
@@ -280,17 +285,35 @@ def diverging(
         # Blur detection
         # print(f'Combined blur: {img_utils.blur_detection(combined_img)}')
 
+        # Center crop
+        height, width = left_img.shape[0], left_img.shape[1]
+        cx, cy = width//2, height//2
+        wh2, wl2 = wh / 2, wl / 2
+        lx, ly = int(cx-wh2), int(cy-wl2)
+        rx, ry = int(cx+wh2), int(cy+wl2)
+        center = combined_img[ly:ry, lx:rx, :]
+        print(f'Windowed blur: {img_utils.blur_detection(center)}')
+
         left_img = img_utils.draw_center_patch(left_img, wh, wl)
         right_img = img_utils.draw_center_patch(right_img, wh, wl)
         combined_img = img_utils.draw_center_patch(combined_img, wh, wl)
 
-        cv.imshow('Left eye', left_img)
-        cv.imshow('Right eye', right_img)
-        cv.imshow('Combined', combined_img)
+        # cv.imshow('Left eye', left_img)
+        # cv.imshow('Right eye', right_img)
+        # cv.imshow('Combined', combined_img)
 
-        key = cv.waitKey(0)
-        if not keybindings(key, eyes, t):
-            break
+        # Image.fromarray(cv.cvtColor(left_img, cv.COLOR_BGR2RGB)).save(f'left_diverging_{i}.png')
+        # Image.fromarray(cv.cvtColor(right_img, cv.COLOR_BGR2RGB)).save(f'right_diverging_{i}.png')
+        Image.fromarray(cv.cvtColor(combined_img, cv.COLOR_BGR2RGB)).save(f'combined_diverging_{i}.png')
+        # Image.fromarray(left_img.numpy()).save(f'left_diverging_{i}.png')
+        # Image.fromarray(right_img.numpy()).save(f'right_diverging_{i}.png')
+        # Image.fromarray(combined_img.numpy()).save(f'combined_diverging_{i}.png')
+        eyes.left_eye.yaw(0.1)
+
+        # key = cv.waitKey(0)
+        # i+=1
+        # if not keybindings(key, eyes, t):
+        #     break
 
 def object_focusing(
     world: simworld.simworld,
@@ -325,6 +348,10 @@ def object_focusing(
         source = torchvision.transforms.functional.resize(source, [1120, 1024])             # Try to preserve as much data as possible
         source = np.array(source.permute((0, 2, 3, 1))).astype(np.uint8)
         source[:, :, :, [0, 2]] = source[:, :, :, [2, 0]]
+
+        limg = Image.fromarray(source[0, ...])
+        rimg = Image.fromarray(source[1, ...])
+        limg.show(), rimg.show()
 
         left_result = model_left.track(
             source=source[0, ...],

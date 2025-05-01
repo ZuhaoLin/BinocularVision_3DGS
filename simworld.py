@@ -14,7 +14,7 @@ class simworld:
 
         self.added_ind = None
 
-    def render(self, viewmats, cam_intrinsics, width, height, device='cuda') -> torch.Tensor:
+    def render(self, viewmats, cam_intrinsics, width, height, tile_size=16, device='cuda') -> torch.Tensor:
         render_colors, render_alphas, meta = rasterization(
             self.means.float().to(device),
             self.quats.float().to(device),
@@ -26,7 +26,8 @@ class simworld:
             width=width,
             height=height,
             near_plane=0,
-            render_mode='RGB+D'
+            render_mode='RGB+D',
+            tile_size=tile_size
          )
       
         C = render_colors.shape[0]

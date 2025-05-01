@@ -1,0 +1,12 @@
+      elif key == ord('q'):
+         c2w[:-1, :-1] = c2w[:-1, :-1] @ get_yaw(t, as_type=np.array)
+      elif key == ord('e'):
+         c2w[:-1, :-1] = c2w[:-1, :-1] @ get_yaw(-t, as_type=np.array)
+      elif key == ord('t'):
+         c2w[:-1, :-1] = c2w[:-1, :-1] @ get_pitch(t, as_type=np.array)
+      elif key == ord('g'):
+         c2w[:-1, :-1] = c2w[:-1, :-1] @ get_pitch(-t, as_type=np.array)
+      elif key == ord('z'):
+         c2w[:-1, :-1] = c2w[:-1, :-1] @ get_roll(t, as_type=np.array)
+      elif key == ord('x'):
+         c2w[:-1, :-1] = c2w[:-1, :-1] @ get_roll(-t, as_type=np.array)

@@ -22,9 +22,16 @@ def main():
    c2w = torch.eye(4)                                                                                    # Initial camera transform
    w2c = torch.eye(4)
    height, width = 1080, 1920                                                                         # Image height and width
-   camera_intrinsic = torch.Tensor([[500, 0, int(width/2)], [0, 500, int(height/2)], [0, 0, 1]])          # Arbitrary camera intrinsics matrix
+   # height, width = 3840, 2160                                                                         # Image size, 4k
 
-   t = 0.01                                                                                           # Rate to adjust camera
+   w2c = torch.tensor([[-0.9, -0.4, -0.13, -0.075],
+                       [-0.024, 0.36, -0.9324, -0.3825],
+                       [0.4268, -0.8396, -0.3360, 0.4242],
+                       [0, 0, 0, 1]])
+
+   camera_intrinsic = torch.Tensor([[500, 0, width//2], [0, 500, height//2], [0, 0, 1]])          # Arbitrary camera intrinsics matrix
+   # camera_intrinsic = torch.Tensor([[500, 0, 0], [0, 500, 0], [0, 0, 1]])
+   t = 0.1                                                                                           # Rate to adjust camera
 
    torch.manual_seed(42)
    device = "cuda"
@@ -53,13 +60,13 @@ def main():
 
    world = simworld.simworld(data)
 
-   red_dot = {
-      'means': torch.Tensor([0, 0, 0]),
-      'quats': torch.Tensor([1, 0, 0, 0]),
-      'scales': torch.Tensor([0.01, 0.01, 0.01]),
-      'opacities': torch.Tensor([1]),
-      'colors': torch.Tensor([1, 0, 0])
-   }
+   # red_dot = {
+   #    'means': torch.Tensor([0, 0, 0]),
+   #    'quats': torch.Tensor([1, 0, 0, 0]),
+   #    'scales': torch.Tensor([0.01, 0.01, 0.01]),
+   #    'opacities': torch.Tensor([1]),
+   #    'colors': torch.Tensor([1, 0, 0])
+   # }
 
    # eye_loc = torch.Tensor([0, 0, 0]).float()
    # look_pt = red_dot['means'].float()
@@ -67,7 +74,7 @@ def main():
    # c2w[:-1, :] = camera_utils.viewmatrix(look.flatten(), UP.flatten(), eye_loc.flatten())
    # w2c = utils.quick_viewmat_inv(c2w)
 
-   ind = world.add_splats(**red_dot)
+   # ind = world.add_splats(**red_dot)
 
    camera_intrinsic = camera_intrinsic.float().reshape(-1, 3, 3)
 
@@ -105,7 +112,7 @@ def main():
       #    render_mode='RGB+D'
       # )
 
-      img = world.render(viewmats, camera_intrinsic, width, height)
+      img = world.render(viewmats, camera_intrinsic, width, height, tile_size=9)
       img = np.take(img, [2, 1, 0], axis=3).squeeze()
 
       # Show Images
@@ -123,6 +130,7 @@ def main():
       # )
       cv.imshow('Image', np.array(img, dtype=np.uint8))
       key = cv.waitKey(0)
+      print()
 
       if key == ord('p'):
          break
@@ -164,8 +172,8 @@ def main():
          world.means[ind, 2] -= t
       elif key == ord('j'):
          c2w = utils.quick_viewmat_inv(w2c)
-         print(c2w[:-1, -1])
-         print(world.means[ind, :])
+         print(w2c)
+         # print(world.means[ind, :])
       else:
          continue
 

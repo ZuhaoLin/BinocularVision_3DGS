@@ -98,16 +98,16 @@ def main():
 
     f1 = plt.figure()
     ax1 = plt.plot(np.arange(info['iters']+1), info['blur_vals'], 'b.')
-    plt.title('Blur Values')
+    plt.title('Sharpness Over Iterations')
     plt.xlabel('Iterations')
-    plt.ylabel('Blur')
-    # plt.savefig(savefile+'Blur_vs_Iters.png')
+    plt.ylabel('Variance of Laplacian (Sharpness)')
+    plt.savefig(savefile+'Blur_vs_Iters.png')
     f2 = plt.figure()
     ax2 = plt.plot(np.arange(info['iters']+1), info['x_vals'], 'r.')
-    plt.title('Adjustment Values (rad)')
+    plt.title('Adjustments Over Iterations (rad)')
     plt.xlabel('Iterations')
     plt.ylabel('Adjustment Values (rad)')
-    # plt.savefig(savefile+'/Adjustments_vs_Iters.png')
+    plt.savefig(savefile+'/Adjustments_vs_Iters.png')
 
 
     plt.figure()
